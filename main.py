@@ -133,14 +133,10 @@ def health():
 @app.post("/extract", response_model=ExtractResponse)
 def extract(req: ExtractRequest):
     try:
-        # Clean base64 string
         b64 = req.file_content_base64
-        # Remove data URL prefix if present
         if ',' in b64:
             b64 = b64.split(',')[1]
-        # Remove whitespace
         b64 = b64.strip().replace('\n', '').replace('\r', '').replace(' ', '')
-        # Fix padding
         missing = len(b64) % 4
         if missing:
             b64 += '=' * (4 - missing)
@@ -148,14 +144,34 @@ def extract(req: ExtractRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid base64: {str(e)}")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
+    # Validate file size
+    if len(file_bytes) < 100:
+        return ExtractResponse(success=False, count=0, rows=[], 
+                             error=f"File too small: {len(file_bytes)} bytes")
 
+    # Check IFC header
+    header = file_bytes[:100].decode('utf-8', errors='ignore')
+    if 'ISO-10303' not in header and 'IFC' not in header:
+        return ExtractResponse(success=False, count=0, rows=[],
+                             error=f"Not a valid IFC file. Header: {header[:50]}")
+
+    tmp_path = None
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+        
+        # Small delay to ensure file is written
+        import time
+        time.sleep(0.1)
+        
         rows = extract_ifc(tmp_path)
         return ExtractResponse(success=True, count=len(rows), rows=rows)
     except Exception as exc:
         return ExtractResponse(success=False, count=0, rows=[], error=str(exc))
     finally:
-        os.remove(tmp_path)
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except:
+                pass
