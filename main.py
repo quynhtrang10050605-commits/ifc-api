@@ -111,7 +111,30 @@ def extract_ifc(ifc_path: str) -> list[dict]:
                                 row["volume_m3"] = round(a * depth, 6)
         rows.append(row)
     return rows
-
+# Thêm đoạn này vào phần hàm xử lý cấu kiện trong file main.py
+def extract_properties(ifc_file):
+    data = []
+    for el in ifc_file.by_type("IfcBuildingElement"):
+        # Lấy thông tin cơ bản
+        row = {"GlobalId": el.GlobalId, "Name": el.Name, "IfcType": el.is_a()}
+        
+        # Lấy Material Strength
+        try:
+            # Code dò tìm Material Properties
+            mat_assoc = ifc_file.by_type("IfcRelAssociatesMaterial")
+            for rel in mat_assoc:
+                if rel.RelatedObjects[0] == el:
+                    row["material_strength"] = "Defined" # Hoặc lấy giá trị cụ thể
+        except:
+            row["material_strength"] = None
+            
+        # Lấy Load
+        # Dò tìm IfcStructuralAction (nếu có trong file IFC)
+        loads = ifc_file.by_type("IfcStructuralAction")
+        row["structural_load"] = len(loads) 
+        
+        data.append(row)
+    return data
 
 class ExtractRequest(BaseModel):
     file_content_base64: str
